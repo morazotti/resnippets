@@ -124,13 +124,13 @@
       (insert "foo")
       (should (resnippets--check))
       (should (equal (buffer-string) "FOO"))
-      
+
       (erase-buffer)
       (resnippets-remove "foo")
       (insert "foo")
       (should-not (resnippets--check))
       (should (equal (buffer-string) "foo"))
-      
+
       (erase-buffer)
       (insert "bar")
       (should (resnippets--check)) ;; bar still exists
@@ -149,24 +149,24 @@
       (resnippets-define "my-label"
        '(:mode (text-mode emacs-lisp-mode))
        ("foo" "FOO"))
-      
+
       (text-mode)
       (insert "foo")
       (should (resnippets--check))
       (should (equal (buffer-string) "FOO"))
-      
+
       (erase-buffer)
       (emacs-lisp-mode)
       (insert "foo")
       (should (resnippets--check))
       (should (equal (buffer-string) "FOO"))
-      
+
       (erase-buffer)
       (prog-mode) ;; Not in list
       (insert "foo")
       (should-not (resnippets--check))
       (should (equal (buffer-string) "foo"))
-      
+
       ;; Verify label exists in props
       (should (equal (plist-get (cddr (car resnippets--snippets)) :label) "my-label")))))
 
@@ -179,7 +179,7 @@
       ;; \\\\ in string -> \\ in regex -> matches literal \
       (resnippets-add "<\\([a-zA-Z0-9_^{}\\\\]+\\)|\\([a-zA-Z0-9_^{}\\\\]+\\)>"
                       '("\\braket{" 1 "}{" 2 "}"))
-      
+
       (insert "<\\alpha|\\beta>")
       (should (resnippets--check))
       (should (equal (buffer-string) "\\braket{\\alpha}{\\beta}")))))
@@ -193,3 +193,40 @@
       (insert "fooup")
       (should (resnippets--check))
       (should (equal (buffer-string) "UP: FOO")))))
+
+(ert-deftest resnippets-test-label-overwrite ()
+  (with-temp-buffer
+    (resnippets-mode 1)
+    (let ((resnippets--snippets nil))
+      ;; Define first version
+      (resnippets-define "my-group" nil
+        ("foo" "FOO1")
+        ("bar" "BAR1"))
+
+      (should (equal (length resnippets--snippets) 2))
+
+      ;; Define second version - should overwrite
+      (resnippets-define "my-group" nil
+        ("foo" "FOO2"))
+
+      (should (equal (length resnippets--snippets) 1))
+
+      (insert "foo")
+      (should (resnippets--check))
+      (should (equal (buffer-string) "FOO2")))))
+
+(defvar resnippets-test-var nil)
+
+(ert-deftest resnippets-test-expand-env ()
+  (with-temp-buffer
+    (resnippets-mode 1)
+    (let ((resnippets--snippets nil)
+          (resnippets-expand-env '((resnippets-test-var . t))))
+      ;; Snippet that inserts value of resnippets-test-var
+      (resnippets-add "check" '((if (bound-and-true-p resnippets-test-var) "yes" "no")))
+
+      (setq resnippets-test-var nil)
+      (insert "check")
+      (should (resnippets--check))
+      ;; Should expand to "yes" because of the env binding
+      (should (equal (buffer-string) "yes")))))

@@ -55,9 +55,15 @@ Example:
                    :test #'string=
                    :key #'car)))
 
+(defun resnippets-remove-by-label (label)
+  "Remove all snippets with the given LABEL."
+  (setq resnippets--snippets
+        (cl-remove-if (lambda (entry)
+                        (string= (plist-get (cddr entry) :label) label))
+                      resnippets--snippets)))
+
 (defun resnippets-clear ()
   "Remove all registered snippets."
-  (interactive)
   (setq resnippets--snippets nil))
 
 (defun resnippets--check-condition (props)
@@ -77,6 +83,8 @@ LABEL-OR-PROPS can be an optional string label, followed by PROPS.
 ARGS is PROPS (if label used) and then SNIPPETS.
 SNIPPETS is a list of (REGEX EXPANSION) lists.
 
+If LABEL is provided, any existing snippets with that label are removed first.
+
 Example:
   (resnippets-define \"my-group\" '(:mode org-mode)
     (\"alpha\" \"\\\\alpha\"))"
@@ -88,6 +96,7 @@ Example:
                           `(append (list :label ,label) ,props)
                         props)))
       `(progn
+         ,(when label `(resnippets-remove-by-label ,label))
          ,@(mapcar (lambda (s)
                      `(apply #'resnippets-add ,(car s) ,(cadr s) ,props-code))
                    snippets)))))
@@ -110,6 +119,13 @@ Example:
             ""))
       "")))
 
+(defcustom resnippets-expand-env nil
+  "Alist of variables to bind during snippet expansion.
+Each element is a cons cell (VARIABLE . VALUE).
+Example: '((smartparens-mode . nil) (cdlatex-mode . nil))"
+  :type '(alist :key-type variable :value-type sexp)
+  :group 'resnippets)
+
 (defun resnippets--expand (match-string match-data expansion)
   "Expand the snippet.
 MATCH-STRING is the full text that was matched (from buffer).
@@ -124,20 +140,23 @@ EXPANSION is the definition list."
   (let ((final-point nil)
         (resnippets--last-match-data match-data)
         (resnippets--last-match-string match-string))
-    (dolist (item expansion)
-      (cond
-       ((stringp item)
-        (insert item))
-       ((integerp item)
-        (insert (resnippets-group item)))
-       ((or (equal item '(resnippet-cursor))
-            (equal item '(resnippets-cursor)))
-        (setq final-point (point-marker)))
-       ((listp item)
-        (let ((result (eval item)))
-          (when (or (stringp result) (numberp result))
-            (insert (format "%s" result)))))
-       (t "")))
+    (let ((vars (mapcar #'car resnippets-expand-env))
+          (vals (mapcar #'cdr resnippets-expand-env)))
+      (cl-progv vars vals
+        (dolist (item expansion)
+          (cond
+           ((stringp item)
+            (insert item))
+           ((integerp item)
+            (insert (resnippets-group item)))
+           ((or (equal item '(resnippet-cursor))
+                (equal item '(resnippets-cursor)))
+            (setq final-point (point-marker)))
+           ((listp item)
+            (let ((result (eval item)))
+              (when (or (stringp result) (numberp result))
+                (insert (format "%s" result)))))
+           (t "")))))
     (when final-point
       (goto-char final-point)
       (set-marker final-point nil))))

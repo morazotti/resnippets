@@ -230,3 +230,36 @@
       (should (resnippets--check))
       ;; Should expand to "yes" because of the env binding
       (should (equal (buffer-string) "yes")))))
+
+(defun resnippets-test-double (x) (* x 2))
+
+(ert-deftest resnippets-test-dynamic-dispatch ()
+  (with-temp-buffer
+    (resnippets-mode 1)
+    (let ((resnippets--snippets nil))
+      ;; Pattern: ;func=arg; -> calls func(arg)
+      ;; Group 1: function name (string) -> intern -> symbol
+      ;; Group 2: argument (string) -> string-to-number -> number
+      (resnippets-add ";\\([a-z-]+\\)=\\([0-9.]+\\);"
+                      '((number-to-string
+                         (funcall (intern (resnippets-group 1))
+                                  (string-to-number (resnippets-group 2))))))
+      
+      (insert ";resnippets-test-double=5;")
+      (should (resnippets--check))
+      (should (equal (buffer-string) "10"))
+      
+      (erase-buffer)
+      (insert ";1+=5;")
+      (should-not (resnippets--check)) ;; Fails because 1+ has digits/symbols
+      
+      (resnippets-clear)
+      ;; Broader regex for function name: [^=]+ (any char except =)
+      (resnippets-add ";\\([^=]+\\)=\\([0-9.]+\\);"
+                      '((number-to-string
+                         (funcall (intern (resnippets-group 1))
+                                  (string-to-number (resnippets-group 2))))))
+      (erase-buffer)
+      (insert ";1+=5;")
+      (should (resnippets--check))
+      (should (equal (buffer-string) "6")))))

@@ -164,18 +164,27 @@ EXPANSION is the definition list."
       (goto-char final-point)
       (set-marker final-point nil))))
 
-(defun resnippets--check ()
-  "Check if the text before point matches any registered snippet."
+(defun resnippets--check (&optional manual)
+  "Check if the text before point matches any registered snippet.
+If MANUAL is non-nil, checks all snippets regardless of their :auto property.
+Otherwise, skips snippets with :auto nil."
   (let* ((limit (max (point-min) (- (point) resnippets-lookback-limit)))
          (text-to-check (buffer-substring-no-properties limit (point)))
          (case-fold-search nil))
     (cl-loop for (regex expansion . props) in resnippets--snippets
+             for auto = (if (plist-member props :auto) (plist-get props :auto) t)
              if (and (resnippets--check-condition props)
+                     (or manual auto)
                      (string-match (concat regex "\\'") text-to-check))
              return
              (let ((data (match-data)))
                (resnippets--expand text-to-check data expansion)
                t))))
+
+(defun resnippets-expand ()
+  "Manually trigger snippet expansion."
+  (interactive)
+  (resnippets--check t))
 
 (defun resnippets--post-command-handler ()
   "Handler for `post-command-hook` (or `post-self-insert-hook`)."
@@ -184,11 +193,32 @@ EXPANSION is the definition list."
   ;; However, `post-self-insert-hook` is safer to avoid expanding on cursors moves.
   (resnippets--check))
 
+(defun resnippets-expand-or-tab ()
+  "Try to expand a snippet. If no snippet matches, execute the original TAB command."
+  (interactive)
+  (unless (resnippets--check t)
+    (let* ((resnippets-mode nil)
+           (original-func (key-binding (kbd "TAB"))))
+      (if (and original-func (not (eq original-func #'resnippets-expand-or-tab)))
+          (call-interactively original-func)
+        ;; Fallback if no other binding found or it's self-referential
+        ;; Attempt to indent just in case
+        (if (fboundp 'indent-for-tab-command)
+            (call-interactively 'indent-for-tab-command)
+          (insert "\t"))))))
+
+(defvar resnippets-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "TAB") #'resnippets-expand-or-tab)
+    map)
+  "Keymap for Resnippets mode.")
+
 ;;;###autoload
 (define-minor-mode resnippets-mode
   "Minor mode for regex-based snippets."
   :init-value nil
   :lighter " ReSnip"
+  :keymap resnippets-mode-map
   (if resnippets-mode
       (add-hook 'post-self-insert-hook #'resnippets--post-command-handler nil t)
     (remove-hook 'post-self-insert-hook #'resnippets--post-command-handler t)))

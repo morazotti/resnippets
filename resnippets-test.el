@@ -278,3 +278,43 @@
       (should (resnippets--check)) 
       ;; It inserts nothing, just prints message
       (should (equal (buffer-string) "")))))
+
+(ert-deftest resnippets-test-manual-auto ()
+  (with-temp-buffer
+    (resnippets-mode 1)
+    (let ((resnippets--snippets nil))
+      ;; Auto disabled
+      (resnippets-add "manual" "EXPANDED" :auto nil)
+      
+      (insert "manual")
+      (should-not (resnippets--check)) ;; Should not expand automatically
+      (should (equal (buffer-string) "manual"))
+      
+      (resnippets-expand) ;; Should expand manually
+      (should (equal (buffer-string) "EXPANDED"))
+      
+      (resnippets-clear)
+      ;; Auto default
+      (resnippets-add "auto" "EXPANDED")
+      (erase-buffer)
+      (insert "auto")
+      (should (resnippets--check)) ;; Should expand
+      (should (equal (buffer-string) "EXPANDED")))))
+
+(ert-deftest resnippets-test-expand-or-tab ()
+  (with-temp-buffer
+    (resnippets-mode 1)
+    (let ((resnippets--snippets nil))
+      ;; Case 1: Expansion works
+      (resnippets-add "tab" "TABBED")
+      (insert "tab")
+      (resnippets-expand-or-tab)
+      (should (equal (buffer-string) "TABBED"))
+      
+      (erase-buffer)
+      (insert "no-match")
+      (use-local-map (make-sparse-keymap))
+      (define-key (current-local-map) (kbd "TAB") (lambda () (interactive) (insert "FALLBACK")))
+      
+      (resnippets-expand-or-tab)
+      (should (equal (buffer-string) "no-matchFALLBACK")))))

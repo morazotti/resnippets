@@ -278,3 +278,71 @@
       (should (resnippets--check)) 
       ;; It inserts nothing, just prints message
       (should (equal (buffer-string) "")))))
+
+;; Tests for :match-case feature
+
+(ert-deftest resnippets-test-detect-case-pattern ()
+  "Test case pattern detection."
+  (should (eq (resnippets--detect-case-pattern "hello") 'lower))
+  (should (eq (resnippets--detect-case-pattern "HELLO") 'upper))
+  (should (eq (resnippets--detect-case-pattern "Hello") 'capitalized))
+  (should (eq (resnippets--detect-case-pattern "hELLO") 'mixed))
+  (should (eq (resnippets--detect-case-pattern "HeLLo") 'mixed)))
+
+(ert-deftest resnippets-test-apply-case-pattern ()
+  "Test case pattern application."
+  (should (equal (resnippets--apply-case-pattern 'lower "HELLO") "hello"))
+  (should (equal (resnippets--apply-case-pattern 'upper "hello") "HELLO"))
+  (should (equal (resnippets--apply-case-pattern 'capitalized "hELLO") "Hello"))
+  (should (equal (resnippets--apply-case-pattern 'mixed "hello") "hello")))
+
+(ert-deftest resnippets-test-match-case-lower ()
+  "Test :match-case with lowercase input."
+  (with-temp-buffer
+    (resnippets-mode 1)
+    (let ((resnippets--snippets nil))
+      (resnippets-add "integracao" "integração" :match-case t)
+      (insert "integracao")
+      (should (resnippets--check))
+      (should (equal (buffer-string) "integração")))))
+
+(ert-deftest resnippets-test-match-case-upper ()
+  "Test :match-case with uppercase input."
+  (with-temp-buffer
+    (resnippets-mode 1)
+    (let ((resnippets--snippets nil))
+      (resnippets-add "integracao" "integração" :match-case t)
+      (insert "INTEGRACAO")
+      (should (resnippets--check))
+      (should (equal (buffer-string) "INTEGRAÇÃO")))))
+
+(ert-deftest resnippets-test-match-case-capitalized ()
+  "Test :match-case with capitalized input."
+  (with-temp-buffer
+    (resnippets-mode 1)
+    (let ((resnippets--snippets nil))
+      (resnippets-add "integracao" "integração" :match-case t)
+      (insert "Integracao")
+      (should (resnippets--check))
+      (should (equal (buffer-string) "Integração")))))
+
+(ert-deftest resnippets-test-match-case-plural ()
+  "Test :match-case with plural suffix replacement."
+  (with-temp-buffer
+    (resnippets-mode 1)
+    (let ((resnippets--snippets nil))
+      ;; integracoes -> integrações
+      (resnippets-add "\\([a-zA-Z]+\\)coes" '(1 "ções") :match-case t)
+      (insert "integracoes")
+      (should (resnippets--check))
+      (should (equal (buffer-string) "integrações")))))
+
+(ert-deftest resnippets-test-match-case-disabled ()
+  "Test that without :match-case, case must match exactly."
+  (with-temp-buffer
+    (resnippets-mode 1)
+    (let ((resnippets--snippets nil))
+      (resnippets-add "integracao" "integração")
+      (insert "Integracao")  ;; Capitalized, but snippet is lowercase
+      (should-not (resnippets--check))
+      (should (equal (buffer-string) "Integracao")))))

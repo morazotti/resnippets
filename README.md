@@ -1,13 +1,13 @@
-# Resnippets.el
+# resnippets.el
 
-**Resnippets** is an Emacs package for defining auto-expanding snippets triggered by regular expressions. Unlike standard snippet engines that often rely on fixed keywords or word boundaries, Resnippets matches against the text immediately preceding the cursor, enabling powerful suffix-based and context-aware expansions.
+**resnippets.el** is an Emacs package that defines automatically expandable snippets using regex. Unlike traditional snippet engines that rely on fixed keywords or word boundaries, resnippets.el matches the text immediately before the cursor, enabling context-aware, suffix-based expansions.
 
 ## Features
 
-- **Regex Triggers**: Define triggers using regular expressions matching text before the cursor.
-- **Group Capture**: reuse captured groups from your regex in the expansion.
-- **Conditional Expansion**: Restrict snippets to specific major modes or arbitrary predicates (e.g., only inside LaTeX fragments).
-- **Cursor Placement**: Control exactly where the cursor lands after expansion.
+- **Regex Triggers**: Define triggers using regular expressions that match the text before the cursor.
+- **Group Capture**: Reuse captured groups from your regex in the expansion.
+- **Conditional Expansion**: Restrict snippets to specific major modes or arbitrary predicates (e.g., only within LaTeX fragments).
+- **Cursor Placement**: Precisely control the cursor position after expansion.
 
 ## Installation
 
@@ -26,12 +26,14 @@ Add `resnippets.el` to your load path and require it.
 Use `resnippets-add` to register a snippet. The first argument is the regex, and the second is the expansion list.
 
 ```elisp
-;; Simple replacement: typing "hat" expands to "hat-expanded"
-(resnippets-add "hat" '("hat-expanded"))
+;; Simple substitution: typing "vec" expands to "\\vec{}"
+(resnippets-add "\\([a-zA-Z\\]+\\)vec" '("\\vec{" 1 "}"))
 
-;; Regex capture: "barhat" -> "\hat{bar}"
-;; 1 refers to the first capture group
-(resnippets-add "\\([a-zA-Z]+\\)hat" '("\\hat{" 1 "}"))
+;; Regex capture: "ahat" -> "\\hat{a}"
+(resnippets-add "\\([a-zA-Z\\]+\\)hat" '("\\hat{" 1 "}"))
+
+;; Another example: "fdot" -> "\\dot{f}"
+(resnippets-add "\\([a-zA-Z\\]+\\)dot" '("\\dot{" 1 "}"))
 ```
 
 ### Cursor Placement
@@ -39,8 +41,8 @@ Use `resnippets-add` to register a snippet. The first argument is the regex, and
 Use `(resnippets-cursor)` to specify the final cursor position.
 
 ```elisp
-;; "testhat" -> "\hat{test|}"
-(resnippets-add "\\([a-z]+\\)hat" '("\\hat{" 1 (resnippets-cursor) "}"))
+;; "bbar" -> "\\bar{b|}"
+(resnippets-add "\\([a-zA-Z\\]+\\)bar" '("\\bar{" 1 (resnippets-cursor) "}"))
 ```
 
 ### Conditional Snippets
@@ -48,41 +50,51 @@ Use `(resnippets-cursor)` to specify the final cursor position.
 You can restrict snippets using `:mode` or `:condition`.
 
 ```elisp
-;; Only expand in org-mode
-(resnippets-add "alpha" "\\alpha" :mode 'org-mode)
+;; Expansion only in LaTeX-mode and org-mode within LaTeX fragments
+(resnippets-add "\\([a-zA-Z\\]+\\)til" '("\\tilde{" 1 "}")
+                :mode '(LaTeX-mode org-mode)
+                :condition '(or (texmathp) (org-inside-LaTeX-fragment-p)))
+```
 
-;; Only expand if inside a LaTeX fragment (requires org-mode predicate)
-(resnippets-add "\\([a-zA-Z]+\\)hat" '("\\hat{" 1 "}")
-                :mode 'org-mode
-                :condition '(org-inside-LaTeX-fragment-p))
+### Case-Preserving Substitutions
+
+Use `:match-case t` to make the expansion match the case pattern of the input.
+
+```elisp
+;; "rapido" -> "rápido", "Rapido" -> "Rápido", "RAPIDO" -> "RÁPIDO"
+(resnippets-add "rapido" "rápido" :match-case t)
+
+;; "qubt/" -> "\\frac{qubt|}{}"
+(resnippets-add "\\([a-zA-Z0-9{}_\\^\\\\]+\\)/" '("\\frac{" 1 "}{" (resnippets-cursor) "}"))
 ```
 
 ### Group Definitions
 
-Use `resnippets-define` to define multiple snippets with shared properties. You can optionally label the group.
+Use `resnippets-define` to define multiple snippets with shared properties.
 
 ```elisp
 (resnippets-define "math-mode-snippets"
- '(:mode (org-mode LaTeX-mode)
+ '(:mode (LaTeX-mode org-mode)
    :condition (or (texmathp) (org-inside-LaTeX-fragment-p)))
  
- ("alpha" "\\alpha")
- ("beta" "\\beta")
- ("<\\([a-zA-Z0-9_^\\\\{}]+\\)|\\([a-zA-Z0-9_^\\\\{}]+\\)>" '("\\braket{" 1 "}{" 2 "}"))
+ ("ahat" "\\hat{a}")
+ ("bbar" "\\bar{b}")
+ ("cdot" "\\dot{c}")
+ ("ftil" "\\tilde{f}")
  )
 ```
 
 ### Management
 
 ```elisp
-(resnippets-remove "regex-key") ;; Remove specific snippet
-(resnippets-clear)              ;; Remove all snippets
+(resnippets-remove "regex-key") ;; Remove a specific snippet
+(resnippets-clear)             ;; Remove all snippets
 ```
 
-## Contributing
+## Contribution
 
-Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
+Contributions via pull requests are welcome. For significant changes, please open an issue first to discuss what you would like to change.
 
 ## License
 
-[GPLv2](LICENSE)
+This project is licensed under the GNU General Public License v2.0. See the `LICENSE` file for more details.

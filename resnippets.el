@@ -119,6 +119,24 @@ Example:
             ""))
       "")))
 
+(defun resnippets--detect-case-pattern (str)
+  "Detect the case pattern of STR.
+Returns one of: \\='lower, \\='upper, \\='capitalized, \\='mixed."
+  (cond
+   ((string= str (downcase str)) 'lower)
+   ((string= str (upcase str)) 'upper)
+   ((string= str (capitalize str)) 'capitalized)
+   (t 'mixed)))
+
+(defun resnippets--apply-case-pattern (pattern str)
+  "Apply PATTERN to STR.
+PATTERN is one of: \\='lower, \\='upper, \\='capitalized, \\='mixed."
+  (pcase pattern
+    ('lower (downcase str))
+    ('upper (upcase str))
+    ('capitalized (capitalize str))
+    (_ str)))
+
 (defcustom resnippets-expand-env nil
   "Alist of variables to bind during snippet expansion.
 Each element is a cons cell (VARIABLE . VALUE).
@@ -126,27 +144,32 @@ Example: '((smartparens-mode . nil) (cdlatex-mode . nil))"
   :type '(alist :key-type variable :value-type sexp)
   :group 'resnippets)
 
-(defun resnippets--expand (match-string match-data expansion)
+(defun resnippets--expand (match-string match-data expansion &optional match-case)
   "Expand the snippet.
 MATCH-STRING is the full text that was matched (from buffer).
 MATCH-DATA is the list of indices from `string-match` on MATCH-STRING.
-EXPANSION is the definition list."
+EXPANSION is the definition list.
+When MATCH-CASE is non-nil, apply the detected case pattern to strings."
   ;; The full match (group 0) spans the whole MATCH-STRING if the regex covered it,
   ;; but wait, we effectively matched (concat regex "\\'").
   ;; Group 0 is the entire match.
   ;; We will use MATCH-STRING to extract groups.
   (delete-region (- (point) (length (substring match-string (nth 0 match-data) (nth 1 match-data))))
                  (point))
-  (let ((final-point nil)
-        (resnippets--last-match-data match-data)
-        (resnippets--last-match-string match-string))
+  (let* ((final-point nil)
+         (resnippets--last-match-data match-data)
+         (resnippets--last-match-string match-string)
+         (matched-text (substring match-string (nth 0 match-data) (nth 1 match-data)))
+         (case-pattern (when match-case (resnippets--detect-case-pattern matched-text))))
     (let ((vars (mapcar #'car resnippets-expand-env))
           (vals (mapcar #'cdr resnippets-expand-env)))
       (cl-progv vars vals
         (dolist (item expansion)
           (cond
            ((stringp item)
-            (insert item))
+            (insert (if case-pattern
+                        (resnippets--apply-case-pattern case-pattern item)
+                      item)))
            ((integerp item)
             (insert (resnippets-group item)))
            ((or (equal item '(resnippet-cursor))
@@ -167,14 +190,15 @@ EXPANSION is the definition list."
 (defun resnippets--check ()
   "Check if the text before point matches any registered snippet."
   (let* ((limit (max (point-min) (- (point) resnippets-lookback-limit)))
-         (text-to-check (buffer-substring-no-properties limit (point)))
-         (case-fold-search nil))
+         (text-to-check (buffer-substring-no-properties limit (point))))
     (cl-loop for (regex expansion . props) in resnippets--snippets
+             for match-case = (plist-get props :match-case)
+             for case-fold-search = match-case
              if (and (resnippets--check-condition props)
                      (string-match (concat regex "\\'") text-to-check))
              return
              (let ((data (match-data)))
-               (resnippets--expand text-to-check data expansion)
+               (resnippets--expand text-to-check data expansion match-case)
                t))))
 
 (defun resnippets--post-command-handler ()

@@ -1,7 +1,7 @@
 ;;; resnippets-test.el --- Tests for resnippets.el -*- lexical-binding: t; -*-
 
 (require 'ert)
-(require 'resnippets "/home/nicolas/repos/resnippets/resnippets.el")
+(require 'resnippets)
 
 (ert-deftest resnippets-test-simple-suffix ()
   (with-temp-buffer
@@ -500,3 +500,32 @@
             (should (equal (buffer-string) "bar"))))
       ;; Cleanup
       (delete-file temp-file))))
+
+;; Tests for field and mirror feature
+
+(ert-deftest resnippets-test-field-basic ()
+  "Test that field creates an overlay with default text."
+  (with-temp-buffer
+    (resnippets-mode 1)
+    (let ((resnippets--snippets nil))
+      (resnippets-add "fori" '("for (" (field 1 "i") " = 0; " (field 1) " < " (field 2 "n") "; " (field 1) "++)"))
+      (insert "fori")
+      (should (resnippets--check))
+      ;; Check expanded text
+      (should (string= (buffer-string) "for (i = 0; i < n; i++)"))
+      ;; Check that fields were created
+      (should resnippets--active-fields)
+      ;; Cleanup
+      (resnippets--cleanup-fields))))
+
+(ert-deftest resnippets-test-mirror-creates-overlay ()
+  "Test that mirror creates overlay linked to field."
+  (with-temp-buffer
+    (resnippets-mode 1)
+    (let ((resnippets--snippets nil))
+      (resnippets-add "test" '((field 1 "x") " and " (mirror 1)))
+      (insert "test")
+      (should (resnippets--check))
+      (should (equal (buffer-string) "x and x"))
+      (should resnippets--active-mirrors)
+      (resnippets--cleanup-fields))))

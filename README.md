@@ -87,6 +87,17 @@ Use `:chain t` to trigger further snippet matches after expansion.
 ;; "int" → "\int " → "INTEGRAL" (chained)
 ```
 
+### Editable Fields with Mirrors
+
+Use `(field N "default")` for editable fields and `(mirror N)` for auto-synced mirrors:
+
+```elisp
+(resnippets-add "fori" '("for (" (field 1 "i") " = 0; " (mirror 1) " < " (field 2 "n") "; " (mirror 1) "++)"))
+;; Expands to: for (i = 0; i < n; i++)
+;; Field 1 ("i") syncs to all mirrors - edit once, updates everywhere
+;; TAB/S-TAB to navigate between fields, RET to finalize
+```
+
 ### Case-Preserving Substitutions
 
 Use `:match-case t` to make the expansion match the case pattern of the input.

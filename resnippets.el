@@ -145,6 +145,172 @@ PATTERN is one of: \\='lower, \\='upper, \\='capitalized, \\='mixed."
     ('capitalized (capitalize str))
     (_ str)))
 
+;;; Field and Mirror System
+
+(defvar-local resnippets--active-fields nil
+  "List of active field overlays in current snippet expansion.
+Each element is (FIELD-NUM . OVERLAY).")
+
+(defvar-local resnippets--active-mirrors nil
+  "List of active mirror overlays in current snippet expansion.
+Each element is (FIELD-NUM . OVERLAY).")
+
+(defvar-local resnippets--field-values nil
+  "Alist of (FIELD-NUM . VALUE) for active fields.")
+
+(defvar-local resnippets--in-field nil
+  "Non-nil when actively editing a snippet field.")
+
+(defface resnippets-field-face
+  '((t :background "#3a3a5a" :extend t))
+  "Face for active snippet fields."
+  :group 'resnippets)
+
+(defface resnippets-mirror-face
+  '((t :background "#2a4a2a" :extend t))
+  "Face for snippet mirrors."
+  :group 'resnippets)
+
+(defvar resnippets-field-keymap
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "TAB") #'resnippets-next-field)
+    (define-key map (kbd "<tab>") #'resnippets-next-field)
+    (define-key map (kbd "S-TAB") #'resnippets-prev-field)
+    (define-key map (kbd "<backtab>") #'resnippets-prev-field)
+    (define-key map (kbd "C-g") #'resnippets-abort-field)
+    (define-key map (kbd "RET") #'resnippets-exit-field)
+    map)
+  "Keymap active during snippet field editing.")
+
+(defun resnippets--make-field (n &optional default)
+  "Create a field with number N and optional DEFAULT text.
+If field N already exists, creates a mirror instead.
+Returns the inserted text length."
+  ;; Check if this field number already exists
+  (if (assq n resnippets--field-values)
+      ;; Field N already exists, create a mirror instead
+      (resnippets--make-mirror n)
+    ;; First occurrence of field N, create actual field
+    (let* ((text (or default ""))
+           (start (point))
+           (end (progn (insert text) (point)))
+           (ov (make-overlay start end nil nil t)))
+      (overlay-put ov 'face 'resnippets-field-face)
+      (overlay-put ov 'resnippets-field n)
+      (overlay-put ov 'keymap resnippets-field-keymap)
+      (overlay-put ov 'modification-hooks '(resnippets--field-modified))
+      (overlay-put ov 'insert-in-front-hooks '(resnippets--field-modified))
+      (overlay-put ov 'insert-behind-hooks '(resnippets--field-modified))
+      (push (cons n ov) resnippets--active-fields)
+      (push (cons n text) resnippets--field-values)
+      (length text))))
+
+(defun resnippets--make-mirror (n)
+  "Create a mirror for field N.
+Returns the inserted text length."
+  (let* ((text (or (cdr (assq n resnippets--field-values)) ""))
+         (start (point))
+         (end (progn (insert text) (point)))
+         (ov (make-overlay start end nil nil t)))
+    (overlay-put ov 'face 'resnippets-mirror-face)
+    (overlay-put ov 'resnippets-mirror n)
+    (overlay-put ov 'evaporate t)
+    (push (cons n ov) resnippets--active-mirrors)
+    (length text)))
+
+(defun resnippets--field-modified (ov after-p beg end &optional len)
+  "Hook called when a field overlay is modified."
+  (when (and after-p resnippets--in-field)
+    (let* ((n (overlay-get ov 'resnippets-field))
+           (new-text (buffer-substring-no-properties 
+                      (overlay-start ov) (overlay-end ov))))
+      ;; Update stored value
+      (setf (cdr (assq n resnippets--field-values)) new-text)
+      ;; Update all mirrors
+      (resnippets--update-mirrors n new-text))))
+
+(defun resnippets--update-mirrors (n text)
+  "Update all mirrors for field N with TEXT."
+  (dolist (mirror-entry resnippets--active-mirrors)
+    (when (and (eq (car mirror-entry) n)
+               (overlay-buffer (cdr mirror-entry)))
+      (let* ((ov (cdr mirror-entry))
+             (start (overlay-start ov))
+             (end (overlay-end ov)))
+        (save-excursion
+          (let ((inhibit-modification-hooks t))
+            (goto-char start)
+            (delete-region start end)
+            (insert text)
+            (move-overlay ov start (point))))))))
+
+(defun resnippets-next-field ()
+  "Move to the next field in the snippet."
+  (interactive)
+  (let* ((current (resnippets--current-field-num))
+         (sorted (sort (mapcar #'car resnippets--active-fields) #'<))
+         (next (or (cl-find-if (lambda (n) (> n (or current -1))) sorted)
+                   (car sorted))))
+    (when next
+      (resnippets--goto-field next))))
+
+(defun resnippets-prev-field ()
+  "Move to the previous field in the snippet."
+  (interactive)
+  (let* ((current (resnippets--current-field-num))
+         (sorted (sort (mapcar #'car resnippets--active-fields) #'>))
+         (prev (or (cl-find-if (lambda (n) (< n (or current 999))) sorted)
+                   (car sorted))))
+    (when prev
+      (resnippets--goto-field prev))))
+
+(defun resnippets--current-field-num ()
+  "Return the field number at point, or nil."
+  (let ((ovs (overlays-at (point))))
+    (cl-loop for ov in ovs
+             when (overlay-get ov 'resnippets-field)
+             return (overlay-get ov 'resnippets-field))))
+
+(defun resnippets--goto-field (n)
+  "Go to field N and select its content."
+  (let ((ov (cdr (assq n resnippets--active-fields))))
+    (when (and ov (overlay-buffer ov))
+      (goto-char (overlay-start ov))
+      (push-mark (overlay-end ov) t t))))
+
+(defun resnippets-exit-field ()
+  "Exit field editing and finalize snippet."
+  (interactive)
+  (resnippets--cleanup-fields)
+  (message "Snippet finalized."))
+
+(defun resnippets-abort-field ()
+  "Abort field editing."
+  (interactive)
+  (resnippets--cleanup-fields)
+  (message "Snippet aborted."))
+
+(defun resnippets--cleanup-fields ()
+  "Remove all field overlays and cleanup state."
+  (dolist (entry resnippets--active-fields)
+    (when (overlay-buffer (cdr entry))
+      (delete-overlay (cdr entry))))
+  (dolist (entry resnippets--active-mirrors)
+    (when (overlay-buffer (cdr entry))
+      (delete-overlay (cdr entry))))
+  (setq resnippets--active-fields nil
+        resnippets--active-mirrors nil
+        resnippets--field-values nil
+        resnippets--in-field nil))
+
+(defun resnippets--activate-fields ()
+  "Activate field editing mode if there are fields."
+  (when resnippets--active-fields
+    (setq resnippets--in-field t)
+    ;; Go to first field
+    (let ((first-field (car (sort (mapcar #'car resnippets--active-fields) #'<))))
+      (resnippets--goto-field first-field))))
+
 (defcustom resnippets-expand-env nil
   "Alist of variables to bind during snippet expansion.
 Each element is a cons cell (VARIABLE . VALUE).
@@ -157,11 +323,19 @@ Example: '((smartparens-mode . nil) (cdlatex-mode . nil))"
 MATCH-STRING is the full text that was matched (from buffer).
 MATCH-DATA is the list of indices from `string-match` on MATCH-STRING.
 EXPANSION is the definition list.
-When MATCH-CASE is non-nil, apply the detected case pattern to strings."
+When MATCH-CASE is non-nil, apply the detected case pattern to strings.
+
+Expansion items can include:
+- Strings: inserted literally
+- Integers: replaced with regex capture group
+- (resnippets-cursor): sets cursor position after expansion
+- (field N DEFAULT): creates editable field N with optional default
+- (mirror N): creates mirror of field N"
   ;; The full match (group 0) spans the whole MATCH-STRING if the regex covered it,
-  ;; but wait, we effectively matched (concat regex "\\'").
+  ;; but wait, we effectively matched (concat regex "\\\'").
   ;; Group 0 is the entire match.
   ;; We will use MATCH-STRING to extract groups.
+  (resnippets--cleanup-fields)  ;; Clear any previous field state
   (undo-boundary)  ;; Group all changes for atomic undo
   (delete-region (- (point) (length (substring match-string (nth 0 match-data) (nth 1 match-data))))
                  (point))
@@ -184,6 +358,15 @@ When MATCH-CASE is non-nil, apply the detected case pattern to strings."
            ((or (equal item '(resnippet-cursor))
                 (equal item '(resnippets-cursor)))
             (setq final-point (point-marker)))
+           ;; Field: (field N) or (field N "default")
+           ((and (listp item) (eq (car item) 'field))
+            (let ((n (nth 1 item))
+                  (default (nth 2 item)))
+              (resnippets--make-field n default)))
+           ;; Mirror: (mirror N)
+           ((and (listp item) (eq (car item) 'mirror))
+            (let ((n (nth 1 item)))
+              (resnippets--make-mirror n)))
            ((listp item)
             (let ((result 
                    (condition-case err
@@ -192,9 +375,13 @@ When MATCH-CASE is non-nil, apply the detected case pattern to strings."
               (when (or (stringp result) (numberp result))
                 (insert (format "%s" result)))))
            (t "")))))
-    (when final-point
-      (goto-char final-point)
-      (set-marker final-point nil))))
+    ;; Activate field editing if there are fields
+    (if resnippets--active-fields
+        (resnippets--activate-fields)
+      ;; Otherwise just go to cursor position
+      (when final-point
+        (goto-char final-point)
+        (set-marker final-point nil)))))
 
 (defvar resnippets--chain-depth 0
   "Current depth of chained expansions.")

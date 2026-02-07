@@ -98,6 +98,16 @@ Use `(field N "default")` for editable fields and `(mirror N)` for auto-synced m
 ;; TAB/S-TAB to navigate between fields, RET to finalize
 ```
 
+**Alternative: Yasnippet Integration**
+
+If you have [yasnippet](https://github.com/joaotavora/yasnippet) installed, you can use its mature field system:
+
+```elisp
+(resnippets-add "for" (resnippets-yasnippet "for (${1:i}; $2; $1++) {\n$0\n}"))
+;; Uses yasnippet's field syntax: $1, ${1:default}, $0, etc.
+;; Full yasnippet experience when available, graceful fallback otherwise
+```
+
 ### Case-Preserving Substitutions
 
 Use `:match-case t` to make the expansion match the case pattern of the input.

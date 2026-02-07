@@ -529,3 +529,17 @@
       (should (equal (buffer-string) "x and x"))
       (should resnippets--active-mirrors)
       (resnippets--cleanup-fields))))
+
+;; Tests for yasnippet integration
+
+(ert-deftest resnippets-test-yasnippet-fallback ()
+  "Test that yasnippet expansion falls back when yasnippet not loaded."
+  (with-temp-buffer
+    (resnippets-mode 1)
+    (let ((resnippets--snippets nil))
+      ;; Use yasnippet syntax, should strip placeholders when yas not available
+      (resnippets-add "fn" (resnippets-yasnippet "function $1($2) { $0 }"))
+      (insert "fn")
+      (should (resnippets--check))
+      ;; Without yasnippet, placeholders are stripped
+      (should (string= (buffer-string) "function () {  }")))))

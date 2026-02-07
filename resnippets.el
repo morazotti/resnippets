@@ -311,6 +311,30 @@ Returns the inserted text length."
     (let ((first-field (car (sort (mapcar #'car resnippets--active-fields) #'<))))
       (resnippets--goto-field first-field))))
 
+;;; Yasnippet Integration
+
+(defvar resnippets-use-yasnippet nil
+  "When non-nil and yasnippet is available, use it for field expansion.")
+
+(defun resnippets-yasnippet (template)
+  "Create a yasnippet expansion from TEMPLATE string.
+TEMPLATE uses yasnippet syntax ($1, $2, ${1:default}, $0, etc).
+Returns a form that will expand the template using yasnippet.
+
+Example:
+  (resnippets-add \"for\" (resnippets-yasnippet \"for ($1; $2; $3) {\\n$0\\n}\"))"
+  `((resnippets--expand-yasnippet ,template)))
+
+(defun resnippets--expand-yasnippet (template)
+  "Expand TEMPLATE using yasnippet if available."
+  (if (and (featurep 'yasnippet) (fboundp 'yas-expand-snippet))
+      (progn
+        (yas-expand-snippet template)
+        "")  ;; Return empty string, yasnippet handles insertion
+    ;; Fallback: just insert template with placeholders stripped
+    (let ((simple (replace-regexp-in-string "\\${?[0-9]+\\(?::[^}]*\\)?}?" "" template)))
+      (replace-regexp-in-string "\\$[0-9]+" "" simple))))
+
 (defcustom resnippets-expand-env nil
   "Alist of variables to bind during snippet expansion.
 Each element is a cons cell (VARIABLE . VALUE).

@@ -530,6 +530,26 @@
       (should resnippets--active-mirrors)
       (resnippets--cleanup-fields))))
 
+(ert-deftest resnippets-test-field-pristine-clear ()
+  "Test that pristine fields clear default on first insert."
+  (with-temp-buffer
+    (resnippets-mode 1)
+    (let ((resnippets--snippets nil))
+      (resnippets-add "test" '("Hello " (field 1 "World") "!"))
+      (insert "test")
+      (should (resnippets--check))
+      (should (equal (buffer-string) "Hello World!"))
+      ;; Field should be marked as pristine
+      (should (assq 1 resnippets--field-pristine))
+      ;; Simulate typing at field start (insert "X" at position 7)
+      (goto-char 7)
+      (insert "X")
+      ;; "World" should be cleared, only "X" remains in field
+      (should (equal (buffer-string) "Hello X!"))
+      ;; Field should no longer be pristine
+      (should-not (assq 1 resnippets--field-pristine))
+      (resnippets--cleanup-fields))))
+
 ;; Tests for yasnippet integration
 
 (ert-deftest resnippets-test-yasnippet-fallback ()

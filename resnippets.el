@@ -158,6 +158,10 @@ Each element is (FIELD-NUM . OVERLAY).")
 (defvar-local resnippets--field-values nil
   "Alist of (FIELD-NUM . VALUE) for active fields.")
 
+(defvar-local resnippets--field-pristine nil
+  "Alist of (FIELD-NUM . t) for fields that haven't been edited yet.
+When a pristine field is first edited, its content is cleared.")
+
 (defvar-local resnippets--in-field nil
   "Non-nil when actively editing a snippet field.")
 
@@ -209,10 +213,13 @@ Returns the inserted text length."
       (overlay-put ov 'resnippets-field n)
       (overlay-put ov 'keymap resnippets-field-keymap)
       (overlay-put ov 'modification-hooks '(resnippets--field-modified))
-      (overlay-put ov 'insert-in-front-hooks '(resnippets--field-modified))
+      (overlay-put ov 'insert-in-front-hooks '(resnippets--field-insert-in-front))
       (overlay-put ov 'insert-behind-hooks '(resnippets--field-modified))
       (push (cons n ov) resnippets--active-fields)
       (push (cons n text) resnippets--field-values)
+      ;; Mark field as pristine if it has default content
+      (when (> (length text) 0)
+        (push (cons n t) resnippets--field-pristine))
       (length text))))
 
 (defun resnippets--make-mirror (n)
@@ -227,6 +234,27 @@ Returns the inserted text length."
     (overlay-put ov 'evaporate t)
     (push (cons n ov) resnippets--active-mirrors)
     (length text)))
+
+(defun resnippets--field-insert-in-front (ov after-p beg end &optional len)
+  "Hook called when text is inserted at the front of a field.
+If the field is pristine (has default text), clear it first."
+  (when (and after-p resnippets--in-field)
+    (let* ((n (overlay-get ov 'resnippets-field))
+           (pristine (assq n resnippets--field-pristine)))
+      (when pristine
+        ;; Remove pristine status
+        (setq resnippets--field-pristine
+              (assq-delete-all n resnippets--field-pristine))
+        ;; Get the original default text length from stored value
+        (let* ((original-text (cdr (assq n resnippets--field-values)))
+               (original-len (length original-text))
+               (inserted-len (- end beg)))
+          ;; Delete the old default content starting from after the new text
+          (when (> original-len 0)
+            (let ((inhibit-modification-hooks t))
+              (delete-region end (+ end original-len))))))
+      ;; Now call the normal modified hook
+      (resnippets--field-modified ov after-p beg end len))))
 
 (defun resnippets--field-modified (ov after-p beg end &optional len)
   "Hook called when a field overlay is modified."
@@ -316,6 +344,7 @@ Returns the inserted text length."
   (setq resnippets--active-fields nil
         resnippets--active-mirrors nil
         resnippets--field-values nil
+        resnippets--field-pristine nil
         resnippets--in-field nil))
 
 (defun resnippets--activate-fields ()

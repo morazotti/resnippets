@@ -550,6 +550,29 @@
       (should-not (assq 1 resnippets--field-pristine))
       (resnippets--cleanup-fields))))
 
+(ert-deftest resnippets-test-field-pristine-navigation ()
+  "Test that navigating to a pristine field and typing replaces content."
+  (with-temp-buffer
+    (resnippets-mode 1)
+    (let ((resnippets--snippets nil))
+      (resnippets-add "test" '("Hello " (field 1 "World") "!"))
+      (insert "test")
+      (should (resnippets--check))
+      (should (equal (buffer-string) "Hello World!"))
+      ;; Field should be marked as pristine  
+      (should (assq 1 resnippets--field-pristine))
+      ;; Simulate navigating to field (like TAB does) - goes to field start
+      (let* ((ov (cdr (assq 1 resnippets--active-fields)))
+             (start-pos (overlay-start ov)))
+        ;; Insert at field START (simulates typing after TAB)
+        (goto-char start-pos)
+        (insert "New")
+        ;; "World" should be cleared, only "New" remains in field
+        (should (equal (buffer-string) "Hello New!"))
+        ;; Field should no longer be pristine
+        (should-not (assq 1 resnippets--field-pristine)))
+      (resnippets--cleanup-fields))))
+
 ;; Tests for yasnippet integration
 
 (ert-deftest resnippets-test-yasnippet-fallback ()

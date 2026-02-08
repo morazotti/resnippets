@@ -213,7 +213,7 @@ Returns the inserted text length."
       (overlay-put ov 'resnippets-field n)
       (overlay-put ov 'keymap resnippets-field-keymap)
       (overlay-put ov 'modification-hooks '(resnippets--field-modified))
-      (overlay-put ov 'insert-in-front-hooks '(resnippets--field-insert-in-front))
+      (overlay-put ov 'insert-in-front-hooks '(resnippets--field-modified))
       (overlay-put ov 'insert-behind-hooks '(resnippets--field-modified))
       (push (cons n ov) resnippets--active-fields)
       (push (cons n text) resnippets--field-values)
@@ -235,26 +235,31 @@ Returns the inserted text length."
     (push (cons n ov) resnippets--active-mirrors)
     (length text)))
 
-(defun resnippets--field-insert-in-front (ov after-p beg end &optional len)
-  "Hook called when text is inserted at the front of a field.
-If the field is pristine (has default text), clear it first."
-  (when (and after-p resnippets--in-field)
-    (let* ((n (overlay-get ov 'resnippets-field))
-           (pristine (assq n resnippets--field-pristine)))
-      (when pristine
-        ;; Remove pristine status
-        (setq resnippets--field-pristine
-              (assq-delete-all n resnippets--field-pristine))
-        ;; Get the original default text length from stored value
-        (let* ((original-text (cdr (assq n resnippets--field-values)))
+(defun resnippets--before-change-clear-pristine (beg _end)
+  "Before-change hook to clear pristine field content before modification."
+  (when (and resnippets--in-field resnippets--field-pristine)
+    (let ((field-num nil))
+      (dolist (entry resnippets--active-fields)
+        (let* ((n (car entry))
+               (ov (cdr entry)))
+          (when (and (assq n resnippets--field-pristine)
+                     (overlay-buffer ov)
+                     (>= beg (overlay-start ov))
+                     (<= beg (overlay-end ov)))
+            (setq field-num n))))
+      (when field-num
+        (let* ((original-text (cdr (assq field-num resnippets--field-values)))
                (original-len (length original-text))
-               (inserted-len (- end beg)))
-          ;; Delete the old default content starting from after the new text
+               (ov (cdr (assq field-num resnippets--active-fields)))
+               (start (overlay-start ov)))
+          (setq resnippets--field-pristine
+                (assq-delete-all field-num resnippets--field-pristine))
           (when (> original-len 0)
             (let ((inhibit-modification-hooks t))
-              (delete-region end (+ end original-len))))))
-      ;; Now call the normal modified hook
-      (resnippets--field-modified ov after-p beg end len))))
+              (delete-region start (+ start original-len))
+              (setf (cdr (assq field-num resnippets--field-values)) ""))))))))
+
+
 
 (defun resnippets--field-modified (ov after-p beg end &optional len)
   "Hook called when a field overlay is modified."
@@ -335,6 +340,7 @@ If the field is pristine (has default text), clear it first."
 
 (defun resnippets--cleanup-fields ()
   "Remove all field overlays and cleanup state."
+  (remove-hook 'before-change-functions #'resnippets--before-change-clear-pristine t)
   (dolist (entry resnippets--active-fields)
     (when (overlay-buffer (cdr entry))
       (delete-overlay (cdr entry))))
@@ -351,6 +357,8 @@ If the field is pristine (has default text), clear it first."
   "Activate field editing mode if there are fields."
   (when resnippets--active-fields
     (setq resnippets--in-field t)
+    ;; Add before-change hook for pristine field clearing
+    (add-hook 'before-change-functions #'resnippets--before-change-clear-pristine nil t)
     ;; Ensure transient-mark-mode is active for selection to work
     (unless transient-mark-mode
       (transient-mark-mode 1))

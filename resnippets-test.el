@@ -550,3 +550,101 @@
             (should (equal (buffer-string) "bar"))))
       ;; Cleanup
       (delete-file temp-file))))
+
+;; Tests for per-project snippet loading
+
+(ert-deftest resnippets-test-project-file-find ()
+  "Test that project file is found by walking up directories."
+  (let* ((dir (make-temp-file "resnippets-proj-" t))
+         (subdir (expand-file-name "sub/" dir))
+         (file (expand-file-name ".resnippets.el" dir)))
+    (unwind-protect
+        (progn
+          (make-directory subdir t)
+          (with-temp-file file
+            (insert "(resnippets-add \"projtest\" \"found\")\n"))
+          (let ((default-directory subdir)
+                (resnippets-project-file ".resnippets.el"))
+            (should (equal (resnippets--find-project-file) file))))
+      (delete-directory dir t))))
+
+(ert-deftest resnippets-test-project-file-load ()
+  "Test that project file loads and auto-scopes snippets."
+  (let* ((dir (make-temp-file "resnippets-proj-" t))
+         (file (expand-file-name ".resnippets.el" dir))
+         (resnippets--snippets nil)
+         (resnippets--loaded-project-files nil))
+    (unwind-protect
+        (progn
+          (with-temp-file file
+            (insert "(resnippets-add \"projfoo\" \"projbar\")\n"))
+          (let ((default-directory (file-name-as-directory dir))
+                (resnippets-project-file ".resnippets.el"))
+            (resnippets--load-project-file)
+            ;; Should have loaded the snippet
+            (should (= (length resnippets--snippets) 1))
+            ;; Should have a project label
+            (let* ((snippet (car resnippets--snippets))
+                   (props (cddr snippet)))
+              (should (string-prefix-p "project:" (plist-get props :label)))
+              ;; Should have a directory condition
+              (should (plist-get props :condition)))
+            ;; Should be tracked as loaded
+            (should (member file resnippets--loaded-project-files))
+            ;; Second call should NOT reload
+            (resnippets--load-project-file)
+            (should (= (length resnippets--snippets) 1))))
+      (delete-directory dir t))))
+
+(ert-deftest resnippets-test-project-file-scoped ()
+  "Test that project snippets only match in project directories."
+  (let* ((dir (make-temp-file "resnippets-proj-" t))
+         (other-dir (make-temp-file "resnippets-other-" t))
+         (file (expand-file-name ".resnippets.el" dir))
+         (resnippets--snippets nil)
+         (resnippets--loaded-project-files nil))
+    (unwind-protect
+        (progn
+          (with-temp-file file
+            (insert "(resnippets-add \"scoped\" \"yes\")\n"))
+          (let ((default-directory (file-name-as-directory dir))
+                (resnippets-project-file ".resnippets.el"))
+            (resnippets--load-project-file))
+          ;; Should match in project directory
+          (with-temp-buffer
+            (let ((default-directory (file-name-as-directory dir)))
+              (resnippets-mode 1)
+              (insert "scoped")
+              (should (resnippets--check))
+              (should (equal (buffer-string) "yes"))))
+          ;; Should NOT match outside project
+          (with-temp-buffer
+            (let ((default-directory (file-name-as-directory other-dir)))
+              (resnippets-mode 1)
+              (insert "scoped")
+              (should-not (resnippets--check))
+              (should (equal (buffer-string) "scoped")))))
+      (delete-directory dir t)
+      (delete-directory other-dir t))))
+
+(ert-deftest resnippets-test-project-file-reload ()
+  "Test that reload cleans old snippets and loads new ones."
+  (let* ((dir (make-temp-file "resnippets-proj-" t))
+         (file (expand-file-name ".resnippets.el" dir))
+         (resnippets--snippets nil)
+         (resnippets--loaded-project-files nil))
+    (unwind-protect
+        (progn
+          (with-temp-file file
+            (insert "(resnippets-add \"reloadtest\" \"v1\")\n"))
+          (let ((default-directory (file-name-as-directory dir))
+                (resnippets-project-file ".resnippets.el"))
+            (resnippets--load-project-file)
+            (should (= (length resnippets--snippets) 1))
+            ;; Update file and reload — old snippets are removed first
+            (with-temp-file file
+              (insert "(resnippets-add \"reloadtest2\" \"v2\")\n"))
+            (resnippets-reload-project)
+            ;; Should have only the new snippet (old was cleaned)
+            (should (= (length resnippets--snippets) 1))))
+      (delete-directory dir t))))

@@ -130,7 +130,25 @@ Use `resnippets-define` to define multiple snippets with shared properties.
  )
 ```
 
+### Per-Project Snippets
+
+Place a `.resnippets.el` file in your project root. It will be automatically loaded when `resnippets-mode` activates in any buffer under that directory.
+
+**Snippets are automatically scoped** — they only activate in buffers within the project directory (no global leaking).
+
+```elisp
+;; .resnippets.el in project root
+(resnippets-add "dbg" "console.log('DEBUG:', )" :mode 'js-mode)
+(resnippets-add "todo" "// TODO: " :suffix t)
+```
+
+The file is loaded once per session. Use `M-x resnippets-reload-project` to reload after editing (old snippets are cleaned automatically).
+
+Customize the filename with `resnippets-project-file`.
+
+
 ### Management
+
 
 ```elisp
 (resnippets-remove "regex-key") ;; Remove a specific snippet

@@ -27,6 +27,14 @@
   "Alist of registered snippets.
 Each element is of the form (REGEX EXPANSION . PROPS).")
 
+(defvar resnippets--current-project-root nil
+  "When non-nil, `resnippets-add' auto-scopes snippets to this directory.
+Bound dynamically during project file loading.")
+
+(defun resnippets--project-label (dir)
+  "Generate a label for project at DIR."
+  (format "project:%s" (md5 dir)))
+
 (defun resnippets-add (regex expansion &rest props)
   "Register a new snippet.
 
@@ -41,10 +49,24 @@ PROPS is a property list of optional conditions:
 :mode MODE-OR-LIST - Check if current `major-mode` matches or derives from MODE.
 :condition FORM - Evaluate FORM; snippet active if non-nil.
 
+When called during project file loading, snippets are automatically
+scoped to buffers within the project directory.
+
 Example:
   (resnippets-add \"\\\\([a-zA-Z]+\\\\)hat\" '(\"\\\\hat{\" 1 \"}\")
                   :mode 'org-mode
                   :condition '(org-inside-LaTeX-fragment-p))"
+  ;; Auto-scope when loading from a project file
+  (when resnippets--current-project-root
+    (let* ((root resnippets--current-project-root)
+           (label (resnippets--project-label root))
+           (existing-condition (plist-get props :condition))
+           (dir-condition `(string-prefix-p ,root default-directory))
+           (combined-condition (if existing-condition
+                                  `(and ,dir-condition ,existing-condition)
+                                dir-condition)))
+      (setq props (plist-put props :label label))
+      (setq props (plist-put props :condition combined-condition))))
   (let ((explist (if (listp expansion) expansion (list expansion))))
     (push (append (list regex explist) props) resnippets--snippets)))
 
@@ -267,8 +289,55 @@ When :chain is t, after expansion, check for more snippet matches."
   :init-value nil
   :lighter " ReSnip"
   (if resnippets-mode
-      (add-hook 'post-self-insert-hook #'resnippets--post-command-handler nil t)
+      (progn
+        (add-hook 'post-self-insert-hook #'resnippets--post-command-handler nil t)
+        (resnippets--load-project-file))
     (remove-hook 'post-self-insert-hook #'resnippets--post-command-handler t)))
+
+(defcustom resnippets-project-file ".resnippets.el"
+  "Name of the per-project snippet file."
+  :type 'string
+  :group 'resnippets)
+
+(defvar resnippets--loaded-project-files nil
+  "List of project snippet files already loaded (absolute paths).")
+
+(defun resnippets--find-project-file ()
+  "Find the nearest `.resnippets.el' by walking up from `default-directory'."
+  (let ((dir (locate-dominating-file default-directory resnippets-project-file)))
+    (when dir
+      (expand-file-name resnippets-project-file dir))))
+
+(defun resnippets--load-project-file ()
+  "Load the project snippet file if found and not already loaded."
+  (let ((file (resnippets--find-project-file)))
+    (when (and file (not (member file resnippets--loaded-project-files)))
+      (let* ((dir (file-name-directory file))
+             (resnippets--current-project-root dir))
+        (load file nil t))
+      (push file resnippets--loaded-project-files)
+      (message "Resnippets: loaded %s" file))))
+
+(defun resnippets-reload-project ()
+  "Reload the project snippet file, even if already loaded.
+If the file has been deleted, removes the previously loaded snippets."
+  (interactive)
+  (let ((file (resnippets--find-project-file)))
+    (if file
+        (let ((dir (file-name-directory file)))
+          ;; Remove old snippets from this project
+          (resnippets-remove-by-label (resnippets--project-label dir))
+          (setq resnippets--loaded-project-files
+                (delete file resnippets--loaded-project-files))
+          (resnippets--load-project-file))
+      ;; File not found — clean up any previously loaded project snippets
+      (let ((dir (file-name-as-directory default-directory)))
+        (resnippets-remove-by-label (resnippets--project-label dir))
+        (setq resnippets--loaded-project-files
+              (cl-remove-if (lambda (f) (string-prefix-p dir f))
+                            resnippets--loaded-project-files))
+        (message "Resnippets: %s removed, snippets cleaned" resnippets-project-file)))))
+
 
 ;;;###autoload
 (define-globalized-minor-mode resnippets-global-mode resnippets-mode resnippets-mode)

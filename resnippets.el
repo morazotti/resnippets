@@ -208,6 +208,7 @@ When MATCH-CASE is non-nil, apply the detected case pattern to strings."
   "Check if the text before point matches any registered snippet.
 When multiple snippets match, the one with highest :priority wins (default 0).
 When :word-boundary is t, the snippet only matches at word boundaries.
+When :suffix is t, the snippet only expands after a non-alphabetic character is typed.
 When :chain is t, after expansion, check for more snippet matches."
   (let* ((limit (max (point-min) (- (point) resnippets-lookback-limit)))
          (text-to-check (buffer-substring-no-properties limit (point)))
@@ -216,10 +217,14 @@ When :chain is t, after expansion, check for more snippet matches."
     (cl-loop for (regex expansion . props) in resnippets--snippets
              for match-case = (plist-get props :match-case)
              for word-boundary = (plist-get props :word-boundary)
+             for suffix = (plist-get props :suffix)
              for case-fold-search = match-case
-             for effective-regex = (if word-boundary
-                                       (concat "\\_<" regex)
-                                     regex)
+             for base-regex = (if word-boundary
+                                  (concat "\\_<" regex)
+                                regex)
+             for effective-regex = (if suffix
+                                      (concat base-regex "\\(?:[^a-zA-Z]\\)")
+                                    base-regex)
              when (and (resnippets--check-condition props)
                        (string-match (concat effective-regex "\\'") text-to-check))
              do (push (list (match-data) expansion props) matches))
@@ -234,8 +239,15 @@ When :chain is t, after expansion, check for more snippet matches."
              (expansion (nth 1 winner))
              (props (nth 2 winner))
              (match-case (plist-get props :match-case))
+             (suffix (plist-get props :suffix))
              (chain (plist-get props :chain)))
         (resnippets--expand text-to-check data expansion match-case)
+        ;; Re-insert the suffix character that was consumed
+        (when suffix
+          ;; Suffix char is the last char of group 0 match
+          (let* ((match-end (nth 1 data))
+                 (suffix-char (substring text-to-check (1- match-end) match-end)))
+            (insert suffix-char)))
         ;; Chain: try to match more snippets after expansion
         (when (and chain (< resnippets--chain-depth resnippets-max-chain-depth))
           (let ((resnippets--chain-depth (1+ resnippets--chain-depth)))

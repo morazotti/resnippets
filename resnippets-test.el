@@ -244,15 +244,15 @@
                       '((number-to-string
                          (funcall (intern (resnippets-group 1))
                                   (string-to-number (resnippets-group 2))))))
-      
+
       (insert ";resnippets-test-double=5;")
       (should (resnippets--check))
       (should (equal (buffer-string) "10"))
-      
+
       (erase-buffer)
       (insert ";1+=5;")
       (should-not (resnippets--check)) ;; Fails because 1+ has digits/symbols
-      
+
       (resnippets-clear)
       ;; Broader regex for function name: [^=]+ (any char except =)
       (resnippets-add ";\\([^=]+\\)=\\([0-9.]+\\);"
@@ -271,11 +271,11 @@
       ;; Snippet that causes an error (void-function)
       (resnippets-add "err" '((funcall 'non-existent-function)))
       (insert "err")
-      
+
       ;; Should not crash check, but maybe insert nothing or error message?
       ;; For now, let's just ensure it checks without throwing elisp signal to top level
       ;; We will implement robust error catching next.
-      (should (resnippets--check)) 
+      (should (resnippets--check))
       ;; It inserts nothing, just prints message
       (should (equal (buffer-string) "")))))
 
@@ -431,7 +431,57 @@
       (should (resnippets--check))
       (should (equal (buffer-string) "foo \\int")))))
 
+;; Tests for :suffix feature
+
+(ert-deftest resnippets-test-suffix-expands-after-space ()
+  "Test that :suffix expands when followed by a space."
+  (with-temp-buffer
+    (resnippets-mode 1)
+    (let ((resnippets--snippets nil))
+      (resnippets-add "cao" "cão" :suffix t)
+      (insert "cao ")
+      (should (resnippets--check))
+      (should (equal (buffer-string) "cão ")))))
+
+(ert-deftest resnippets-test-suffix-no-expand-mid-word ()
+  "Test that :suffix does NOT expand when followed by a letter."
+  (with-temp-buffer
+    (resnippets-mode 1)
+    (let ((resnippets--snippets nil))
+      (resnippets-add "cao" "cão" :suffix t)
+      (insert "caos")
+      (should-not (resnippets--check))
+      (should (equal (buffer-string) "caos")))))
+
+(ert-deftest resnippets-test-suffix-combined-word-boundary ()
+  "Test that :suffix works together with :word-boundary."
+  (with-temp-buffer
+    (resnippets-mode 1)
+    (let ((resnippets--snippets nil))
+      (resnippets-add "cao" "cão" :suffix t :word-boundary t)
+      ;; Should not match mid-word
+      (insert "macaos")
+      (should-not (resnippets--check))
+      (should (equal (buffer-string) "macaos"))
+      ;; Should match at word boundary with suffix
+      (erase-buffer)
+      (insert "cao,")
+      (should (resnippets--check))
+      (should (equal (buffer-string) "cão,")))))
+
+(ert-deftest resnippets-test-suffix-with-groups ()
+  "Test that :suffix does not interfere with user-defined capture groups."
+  (with-temp-buffer
+    (resnippets-mode 1)
+    (let ((resnippets--snippets nil))
+      (resnippets-add "\\(.\\)cao" '(1 "ção") :suffix t)
+      (insert "acao ")
+      (should (resnippets--check))
+      (should (equal (buffer-string) "ação ")))))
+
 ;; Tests for :chain feature
+
+
 
 (ert-deftest resnippets-test-chain-basic ()
   "Test that :chain triggers another expansion."

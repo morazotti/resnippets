@@ -77,6 +77,21 @@ Use `:word-boundary t` to match only at word boundaries (avoids matching mid-wor
 ;; "print" → no match (int is mid-word) ✗
 ```
 
+### Suffix
+
+Use `:suffix t` to delay expansion until a non-alphabetic character is typed after the trigger.
+The suffix character (space, punctuation, etc.) is preserved.
+
+```elisp
+(resnippets-add "cao" "cão" :suffix t)
+;; "cao " → "cão " ✓   (expanded on space)
+;; "cao," → "cão," ✓   (expanded on comma)
+;; "caos" → "caos"  ✗   (not expanded, 's' is alphabetic)
+```
+
+Can be combined with `:word-boundary t` for both start and end control.
+
+
 ### Chained Expansions
 
 Use `:chain t` to trigger further snippet matches after expansion.
@@ -107,7 +122,7 @@ Use `resnippets-define` to define multiple snippets with shared properties.
 (resnippets-define "math-mode-snippets"
  '(:mode (LaTeX-mode org-mode)
    :condition (or (texmathp) (org-inside-LaTeX-fragment-p)))
- 
+
  ("ahat" "\\hat{a}")
  ("bbar" "\\bar{b}")
  ("cdot" "\\dot{c}")
